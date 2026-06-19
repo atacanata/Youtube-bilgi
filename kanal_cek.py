@@ -169,6 +169,10 @@ def main():
     p = argparse.ArgumentParser(description="Anahtarsiz kanal cekme (scrape/RSS + transcript).")
     p.add_argument("kanal", help="@handle, URL veya kanal ID")
     p.add_argument("--sayi", type=int, default=10, help="Son kac video (varsayilan 10, ~30'a kadar)")
+    p.add_argument("--gecikme", type=float, default=0,
+                   help="Videolar arasi saniye (0=otomatik). Buyuk/riskli islerde 10-15 onerilir.")
+    p.add_argument("--grup-bekle", type=int, default=0,
+                   help="Her 25 videoda bir ekstra mola (saniye). Buyuk islerde 60-120 onerilir.")
     args = p.parse_args()
 
     kanal_id = kanal_id_cek(args.kanal)
@@ -194,7 +198,10 @@ def main():
     def engel_mi(h):
         return bool(h) and ("engel" in h.lower() or "block" in h.lower())
 
-    bekleme = 2.5 if len(videolar) > 15 else 1.5
+    if args.gecikme > 0:
+        bekleme = args.gecikme
+    else:
+        bekleme = 8 if len(videolar) > 50 else (2.5 if len(videolar) > 15 else 1.5)
     sonuc = []
     for i, v in enumerate(videolar, 1):
         vid = v["video_id"]
@@ -221,6 +228,9 @@ def main():
         sonuc.append(kayit)
         print(f"  {i:>2}. {durum:<40} | {v['baslik'][:50]}")
         time.sleep(bekleme)                      # nazik ol: istekleri arala
+        if args.grup_bekle and i % 25 == 0 and i < len(videolar):
+            print(f"      ... grup molasi: {args.grup_bekle}s")
+            time.sleep(args.grup_bekle)
 
     veri = {"kanal": kanal, "channel_id": kanal_id, "videolar": sonuc}
     eski.write_text(json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8")
