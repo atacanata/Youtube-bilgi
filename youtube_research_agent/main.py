@@ -19,7 +19,7 @@ from src import (analyzer, channel_sync, db, product_insight_analyzer,
                  product_insight_import, product_intelligence_scorer,
                  product_report_builder, product_transcript_captions,
                  product_transcript_import, query_builder, report_builder,
-                 scorer, transcript_captions, transcript_import, video_search)
+                 scorer, stt_runner, transcript_captions, transcript_import, video_search)
 from src.utils import ensure_data_dirs, load_config
 
 
@@ -97,6 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_ipi = sub.add_parser("import-product-insight", help="Claude routine JSON icgorusunu DB'ye al")
     p_ipi.add_argument("--video-id", required=True)
     p_ipi.add_argument("--file", required=True)
+
+    # --- Sprint 4: yerel STT (pilot, tek video) ---
+    p_stt = sub.add_parser("stt-transcribe",
+                           help="(pilot) En yuksek skorlu 1 urun videosunu yt-dlp+Whisper ile transcribe et")
+    p_stt.add_argument("--min-score", type=float, default=8.0)
+    p_stt.add_argument("--limit", type=int, default=1)
 
     return p
 
@@ -205,6 +211,9 @@ def main() -> None:
         elif args.cmd == "import-product-insight":
             product_insight_import.import_product_insight(
                 conn, args.video_id, args.file)
+
+        elif args.cmd == "stt-transcribe":
+            stt_runner.stt_transcribe(conn, config, args.min_score, args.limit)
     finally:
         conn.close()
 

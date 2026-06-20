@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS videos (
     relevance_reason TEXT,
     status TEXT NOT NULL DEFAULT 'DISCOVERED'
         CHECK (status IN (
-            'DISCOVERED','SCORED','SKIPPED','NEEDS_TRANSCRIPT','TRANSCRIBING',
-            'TRANSCRIBED','NEEDS_MANUAL_TRANSCRIPT','NEEDS_AUDIO_STT',
+            'DISCOVERED','SCORED','SKIPPED','NEEDS_TRANSCRIPT','AUDIO_DOWNLOADING',
+            'TRANSCRIBING','TRANSCRIBED','NEEDS_MANUAL_TRANSCRIPT','NEEDS_AUDIO_STT',
             'ANALYZING','ANALYZED','DONE','FAILED'
         )),
     score REAL,
@@ -138,9 +138,79 @@ def migrate(conn: sqlite3.Connection) -> None:
     acols = {r[1] for r in conn.execute("PRAGMA table_info(analyses)").fetchall()}
     if "product_insights_json" not in acols:
         conn.execute("ALTER TABLE analyses ADD COLUMN product_insights_json TEXT")
+    conn.commit()
+    _ensure_status_check(conn)   # Sprint 4: status CHECK'ine AUDIO_DOWNLOADING (gerekirse rebuild)
+    # Tum indeksleri kosulsuz garanti et (rebuild eski indeksleri dusurmus olabilir)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_score ON videos(score)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_source_mode ON videos(source_mode)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category_key)")
     conn.commit()
+
+
+# Sprint 4: status CHECK'ine yeni deger eklemek SQLite'ta tablo yeniden kurmayi gerektirir.
+_VIDEOS_REBUILD_DDL = """
+CREATE TABLE videos_new (
+    video_id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    channel_key TEXT,
+    channel_name TEXT,
+    title TEXT,
+    description TEXT,
+    published_at TEXT,
+    duration_sec INTEGER,
+    view_count INTEGER,
+    like_count INTEGER,
+    comment_count INTEGER,
+    thumbnail_url TEXT,
+    url TEXT,
+    language_hint TEXT,
+    source_mode TEXT NOT NULL DEFAULT 'CHANNEL'
+        CHECK (source_mode IN ('CHANNEL','PRODUCT_SEARCH')),
+    category_key TEXT,
+    category_name TEXT,
+    product_name TEXT,
+    search_query TEXT,
+    search_intent TEXT,
+    relevance_score REAL,
+    relevance_reason TEXT,
+    status TEXT NOT NULL DEFAULT 'DISCOVERED'
+        CHECK (status IN (
+            'DISCOVERED','SCORED','SKIPPED','NEEDS_TRANSCRIPT','AUDIO_DOWNLOADING',
+            'TRANSCRIBING','TRANSCRIBED','NEEDS_MANUAL_TRANSCRIPT','NEEDS_AUDIO_STT',
+            'ANALYZING','ANALYZED','DONE','FAILED'
+        )),
+    score REAL,
+    score_reason TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+"""
+
+
+def _ensure_status_check(conn: sqlite3.Connection) -> None:
+    """status CHECK'i eski (AUDIO_DOWNLOADING'siz) ise tabloyu guvenli sekilde yeniden kurar.
+
+    Veriyi korur: ortak kolonlar isimle kopyalanir; created_at/updated_at degerleri aynen tasinir.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='videos'").fetchone()
+    if not row or "AUDIO_DOWNLOADING" in (row[0] or ""):
+        return  # zaten guncel
+
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(videos)").fetchall()]
+    collist = ", ".join(cols)
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(_VIDEOS_REBUILD_DDL)        # videos_new olustur
+    conn.execute(f"INSERT INTO videos_new ({collist}) SELECT {collist} FROM videos")
+    conn.execute("DROP TABLE videos")
+    conn.execute("ALTER TABLE videos_new RENAME TO videos")
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = ON")
 
 
 def init_db(db_path: str) -> sqlite3.Connection:

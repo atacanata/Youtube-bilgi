@@ -4,3 +4,5 @@ requests
 google-api-python-client
 isodate
 youtube-transcript-api
+yt-dlp
+faster-whisper

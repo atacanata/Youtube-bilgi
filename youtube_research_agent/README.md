@@ -17,6 +17,8 @@ ve transcript varsa analiz/prompt üretir.
 ```bash
 # repo kökündeki venv kullanılabilir veya yeni venv:
 pip install -r youtube_research_agent/requirements.txt
+# STT (Sprint 4) icin ek: Windows'ta ffmpeg gerekli -> winget install Gyan.FFmpeg  (veya: choco install ffmpeg)
+# faster-whisper GPU icin CUDA + cuDNN kurulu olmali; ilk calismada ~1.5GB model iner.
 
 cd youtube_research_agent
 cp .env.example .env        # sonra .env içine anahtarı yaz

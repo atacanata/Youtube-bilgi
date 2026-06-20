@@ -59,3 +59,14 @@ product_research:
         - "karşılaştırma"
         - "uzun kullanım"
         - "sorunları"
+
+# === Sprint 4: Yerel STT (DIZUSTU AYARI; RTX PRO 6000 gelince buyutulur) ===
+stt:
+  enabled: true
+  whisper_model_tr: "large-v3-turbo"   # dizustu icin; large-v3 DEGIL
+  whisper_model_en: "large-v3-turbo"
+  compute_type: "int8_float16"         # 12GB VRAM guvenligi
+  beam_size: 5
+  device: "cuda"
+  delete_audio_after: true
+  audio_tmp_dir: "tmp/audio"
