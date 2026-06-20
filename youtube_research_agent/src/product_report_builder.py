@@ -55,6 +55,7 @@ def _insight_lines(conn, prows) -> list:
                  f"(parantez = kac videoda gecti)._")
     for baslik, key in [("Artilar", "artilar"), ("Eksiler", "eksiler"),
                         ("Sik gecen sorunlar", "sorunlar"),
+                        ("Satin alma etkenleri", "satin_alma_etkenleri"),
                         ("Dikkat edilen kriterler", "kriterler")]:
         freq = _freq([ins.get(key) for ins in analyzed])
         if freq:
@@ -63,7 +64,12 @@ def _insight_lines(conn, prows) -> list:
     rakip = [x for ins in analyzed for x in (ins.get("rakip_karsilastirma") or [])]
     if rakip:
         lines.append("**Rakip karsilastirma:**")
-        lines += [f"- {x}" for x in rakip[:6]]
+        lines += [f"- {x}" for x in rakip[:10]]
+    guv = [str(ins.get("guvenilirlik", "")).strip() for ins in analyzed
+           if str(ins.get("guvenilirlik", "")).strip()]
+    if guv:
+        lines.append("**Guvenilirlik (kaynak basina):**")
+        lines += [f"- {g}" for g in guv]
     return lines
 
 

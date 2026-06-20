@@ -103,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
                            help="(pilot) En yuksek skorlu 1 urun videosunu yt-dlp+Whisper ile transcribe et")
     p_stt.add_argument("--min-score", type=float, default=8.0)
     p_stt.add_argument("--limit", type=int, default=1)
+    p_stt.add_argument("--product", default=None, help="Sadece bu product_name (ayni urun toplulastirma)")
 
     return p
 
@@ -213,7 +214,7 @@ def main() -> None:
                 conn, args.video_id, args.file)
 
         elif args.cmd == "stt-transcribe":
-            stt_runner.stt_transcribe(conn, config, args.min_score, args.limit)
+            stt_runner.stt_transcribe(conn, config, args.min_score, args.limit, args.product)
     finally:
         conn.close()
 

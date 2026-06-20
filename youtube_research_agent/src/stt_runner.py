@@ -36,8 +36,10 @@ def _hata(conn, vid: str, msg: str) -> None:
     db.log_job(conn, vid, "stt-transcribe", "error", msg[:200])
 
 
-def stt_transcribe(conn, config: dict, min_score: float, limit: int = 1) -> int:
-    """En yuksek skorlu 1 urun videosunu indir + STT et."""
+def stt_transcribe(conn, config: dict, min_score: float, limit: int = 1,
+                   product: str | None = None) -> int:
+    """En yuksek skorlu 1 urun videosunu indir + STT et.
+    product verilirse sadece o product_name icinden secer (ayni urun toplulastirma)."""
     stt = config.get("stt", {})
     if not stt.get("enabled", False):
         print("  ! stt.enabled=false. config.yaml -> stt.enabled: true yapin.")
@@ -45,12 +47,15 @@ def stt_transcribe(conn, config: dict, min_score: float, limit: int = 1) -> int:
     if limit > 1:
         print(f"  UYARI: Pilot asamasi — 1 video onerilir (verilen --limit={limit}); yine de 1 islenecek.")
 
-    row = conn.execute(
-        "SELECT video_id, title, url, relevance_score, language_hint FROM videos "
-        "WHERE source_mode = 'PRODUCT_SEARCH' AND status = 'NEEDS_TRANSCRIPT' "
-        "AND relevance_score >= ? ORDER BY relevance_score DESC, view_count DESC LIMIT 1",
-        (min_score,),
-    ).fetchone()
+    q = ("SELECT video_id, title, url, relevance_score, language_hint FROM videos "
+         "WHERE source_mode = 'PRODUCT_SEARCH' AND status = 'NEEDS_TRANSCRIPT' "
+         "AND relevance_score >= ?")
+    params: list = [min_score]
+    if product:
+        q += " AND product_name = ?"
+        params.append(product)
+    q += " ORDER BY relevance_score DESC, view_count DESC LIMIT 1"
+    row = conn.execute(q, params).fetchone()
     if not row:
         print("  Uygun video yok (NEEDS_TRANSCRIPT + PRODUCT_SEARCH + skor>=esik).")
         return 0
