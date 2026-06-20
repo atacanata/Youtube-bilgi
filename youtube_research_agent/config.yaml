@@ -70,3 +70,10 @@ stt:
   device: "cuda"
   delete_audio_after: true
   audio_tmp_dir: "tmp/audio"
+  rate_limit:                        # Ban koruması (IP hız sınırı) — insan-benzeri damlama
+    max_videos_per_run: 5            # tek komutta en fazla 5 video
+    min_delay_between_videos: 45     # video arası min bekleme (sn)
+    max_delay_between_videos: 90     # video arası max bekleme (rastgele aralık)
+    daily_video_cap: 20              # 24 saatte en fazla 20 video
+    cooldown_on_error_sec: 300       # 429/hata sonrası 5 dk bekle
+    daily_count_file: "data/.stt_daily_count.json"

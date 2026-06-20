@@ -4,6 +4,7 @@ data/transcripts/*.txt
 data/analyses/*.json
 data/analyses/*.md
 data/reports/*.md
+data/.stt_daily_count.json
 tmp/
 __pycache__/
 *.pyc

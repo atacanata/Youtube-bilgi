@@ -18,7 +18,7 @@ import sys
 from src import (analyzer, channel_sync, db, product_insight_analyzer,
                  product_insight_import, product_intelligence_scorer,
                  product_report_builder, product_transcript_captions,
-                 product_transcript_import, query_builder, report_builder,
+                 product_transcript_import, query_builder, rate_limiter, report_builder,
                  scorer, stt_runner, transcript_captions, transcript_import, video_search)
 from src.utils import ensure_data_dirs, load_config
 
@@ -104,6 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_stt.add_argument("--min-score", type=float, default=8.0)
     p_stt.add_argument("--limit", type=int, default=1)
     p_stt.add_argument("--product", default=None, help="Sadece bu product_name (ayni urun toplulastirma)")
+    p_stt.add_argument("--dry-run", action="store_true", help="Indirme/STT yapma; sadece limit/kota planini yazdir")
+
+    sub.add_parser("stt-quota", help="Bugun kac video STT islendi + kalan kapasite")
 
     return p
 
@@ -214,7 +217,15 @@ def main() -> None:
                 conn, args.video_id, args.file)
 
         elif args.cmd == "stt-transcribe":
-            stt_runner.stt_transcribe(conn, config, args.min_score, args.limit, args.product)
+            stt_runner.stt_transcribe(conn, config, args.min_score, args.limit,
+                                      args.product, args.dry_run)
+
+        elif args.cmd == "stt-quota":
+            allowed, used, remaining = rate_limiter.check_daily_cap(config)
+            cap = rate_limiter.daily_cap(config)
+            print(f"STT gunluk kota: {used}/{cap} kullanildi | kalan: {remaining} | "
+                  f"durum: {'ACIK' if allowed else 'KAPALI (gunluk limit doldu)'}")
+            print(f"Tek calistirma tavani: en fazla {rate_limiter.max_per_run(config)} video")
     finally:
         conn.close()
 
