@@ -1,0 +1,9 @@
+.env
+data/youtube.db
+data/transcripts/*.txt
+data/analyses/*.json
+data/analyses/*.md
+data/reports/*.md
+tmp/
+__pycache__/
+*.pyc

@@ -1,0 +1,41 @@
+settings:
+  db_path: "data/youtube.db"
+  min_score_for_transcript: 7
+  allow_unofficial_captions: false
+  max_videos_per_channel: 30
+
+scoring:
+  keywords_high:
+    - "ai"
+    - "ajan"
+    - "agent"
+    - "claude"
+    - "claude code"
+    - "llm"
+    - "automation"
+    - "otomasyon"
+    - "sistem"
+    - "workflow"
+    - "json"
+    - "prompt"
+  keywords_medium:
+    - "youtube"
+    - "content"
+    - "growth"
+    - "business"
+    - "sales"
+    - "marketing"
+    - "iş"
+    - "verimlilik"
+
+channels:
+  - key: "mert"
+    name: "Mert Durmaz Digital Academy"
+    channel_id: "UCCtwhjWO0NGOAhWOgv3DKFA"
+    language_hint: "tr"
+    enabled: true
+  - key: "hormozi"
+    name: "Alex Hormozi"
+    channel_id: "UCUyDOdBWhC1MCxEjC46d-zw"
+    language_hint: "en"
+    enabled: true

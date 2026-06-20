@@ -1,0 +1,6 @@
+python-dotenv
+PyYAML
+requests
+google-api-python-client
+isodate
+youtube-transcript-api
