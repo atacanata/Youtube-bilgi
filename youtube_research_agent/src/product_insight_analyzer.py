@@ -1,15 +1,12 @@
-"""Transcript'i olan PRODUCT_SEARCH videolarini urun-istihbarat acisindan analiz eder.
+"""Transcript'i olan PRODUCT_SEARCH videolari icin ANALIZ GIRDISI (prompt) uretir.
 
-Parti = TRANSCRIBED + PRODUCT_SEARCH + relevance_score >= min_score.
-- ANTHROPIC_API_KEY YOKSA: data/analyses/{video_id}_product_prompt.md uretir, durur.
-  (analyses satiri YAZILMAZ -> "analiz edilmemis videoya satir yok" kurali korunur.)
-- VARSA: Claude API iskeleti cagrilir, JSON icgoru analyses.product_insights_json'a yazilir,
-  status=ANALYZED.
-Uydurma YOK: prompt 'sadece transkriptte geceni yaz' der.
+SISTEMDE API YOK. Analizi Claude Code'un kendisi (routine) yapar:
+  1) Bu modul her video icin data/analyses/{video_id}_product_prompt.md uretir.
+  2) Claude prompt'u (transcript dahil) okur, JSON icgoru cikarir.
+  3) Sonuc 'import-product-insight' ile analyses.product_insights_json'a yazilir.
+Bu modul analyses satiri YAZMAZ (analiz henuz yapilmadi); sadece girdi hazirlar.
 """
 from __future__ import annotations
-
-import os
 
 from src import db
 from src.utils import resolve_path
@@ -29,6 +26,7 @@ def _build(template: str, row) -> str:
 
 
 def analyze_products(conn, config: dict, min_score: float, limit: int = 10) -> int:
+    """Parti (TRANSCRIBED + PRODUCT_SEARCH + skor>=min) icin prompt dosyalari uretir."""
     template = _template()
     rows = conn.execute(
         "SELECT v.video_id, v.product_name, v.category_name, v.title, v.url, tr.text "
@@ -39,52 +37,18 @@ def analyze_products(conn, config: dict, min_score: float, limit: int = 10) -> i
     ).fetchall()
     if not rows:
         print("  Analiz edilecek video yok (PRODUCT_SEARCH + TRANSCRIBED + skor>=esik).")
+        print("  Once transcript girin: import-product-transcript (veya product-captions).")
         return 0
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+    out_dir = resolve_path("data/analyses")
+    out_dir.mkdir(parents=True, exist_ok=True)
     n = 0
     for r in rows:
-        prompt = _build(template, r)
-        if api_key:
-            try:
-                out = _call_claude(prompt, model, api_key)
-                conn.execute(
-                    "INSERT INTO analyses (video_id, product_insights_json, model) VALUES (?,?,?) "
-                    "ON CONFLICT(video_id) DO UPDATE SET "
-                    "product_insights_json=excluded.product_insights_json, "
-                    "model=excluded.model, updated_at=datetime('now')",
-                    (r["video_id"], out, model),
-                )
-                conn.commit()
-                db.set_status(conn, r["video_id"], "ANALYZED")
-                db.log_job(conn, r["video_id"], "analyze-products", "ok", "claude api")
-                print(f"  Analiz OK (API): {r['video_id']}")
-                n += 1
-                continue
-            except Exception as e:
-                db.log_job(conn, r["video_id"], "analyze-products", "error", f"api: {e}")
-                print(f"  ! API hatasi {r['video_id']}: {e} -> prompt dosyasi")
-
-        out_path = resolve_path("data/analyses") / f"{r['video_id']}_product_prompt.md"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(prompt, encoding="utf-8")
-        db.log_job(conn, r["video_id"], "analyze-products", "info", "prompt uretildi (API yok)")
-        print(f"  Prompt uretildi: data/analyses/{r['video_id']}_product_prompt.md")
+        out = out_dir / f"{r['video_id']}_product_prompt.md"
+        out.write_text(_build(template, r), encoding="utf-8")
+        db.log_job(conn, r["video_id"], "analyze-products", "info", "prompt uretildi (Claude routine bekliyor)")
+        print(f"  Prompt: data/analyses/{r['video_id']}_product_prompt.md")
         n += 1
+    print(f"\n  {n} prompt uretildi. Sirada (Claude routine): prompt -> JSON icgoru "
+          f"-> 'import-product-insight --video-id ID --file icgoru.json'")
     return n
-
-
-def _call_claude(prompt: str, model: str, api_key: str) -> str:
-    """ISKELET: Claude API'den JSON icgoru. Cikti ham JSON metni olarak saklanir."""
-    import requests
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"},
-        json={"model": model, "max_tokens": 1500,
-              "messages": [{"role": "user", "content": prompt}]},
-        timeout=180,
-    )
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]

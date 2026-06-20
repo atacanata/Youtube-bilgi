@@ -16,10 +16,10 @@ import argparse
 import sys
 
 from src import (analyzer, channel_sync, db, product_insight_analyzer,
-                 product_intelligence_scorer, product_report_builder,
-                 product_transcript_captions, product_transcript_import,
-                 query_builder, report_builder, scorer,
-                 transcript_captions, transcript_import, video_search)
+                 product_insight_import, product_intelligence_scorer,
+                 product_report_builder, product_transcript_captions,
+                 product_transcript_import, query_builder, report_builder,
+                 scorer, transcript_captions, transcript_import, video_search)
 from src.utils import ensure_data_dirs, load_config
 
 
@@ -90,9 +90,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_pc.add_argument("--min-score", type=float, default=8.0)
     p_pc.add_argument("--limit", type=int, default=5)
 
-    p_ap = sub.add_parser("analyze-products", help="Transcript'li urun videolarini analiz et/prompt uret")
+    p_ap = sub.add_parser("analyze-products", help="Transcript'li urun videolari icin prompt uret (Claude routine girdisi)")
     p_ap.add_argument("--min-score", type=float, default=8.0)
     p_ap.add_argument("--limit", type=int, default=10)
+
+    p_ipi = sub.add_parser("import-product-insight", help="Claude routine JSON icgorusunu DB'ye al")
+    p_ipi.add_argument("--video-id", required=True)
+    p_ipi.add_argument("--file", required=True)
 
     return p
 
@@ -197,6 +201,10 @@ def main() -> None:
         elif args.cmd == "analyze-products":
             product_insight_analyzer.analyze_products(
                 conn, config, args.min_score, args.limit)
+
+        elif args.cmd == "import-product-insight":
+            product_insight_import.import_product_insight(
+                conn, args.video_id, args.file)
     finally:
         conn.close()
 
