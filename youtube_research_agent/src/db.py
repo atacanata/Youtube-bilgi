@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS analyses (
     business_apply TEXT,
     hook_structure TEXT,
     agent_insights TEXT,
+    product_insights_json TEXT,
     model TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
@@ -133,6 +134,10 @@ def migrate(conn: sqlite3.Connection) -> None:
     for name, ddl in _NEW_VIDEO_COLUMNS:
         if name not in cols:
             conn.execute(f"ALTER TABLE videos ADD COLUMN {name} {ddl}")
+    # Sprint 3: analyses tablosuna urun icgoru JSON kolonu
+    acols = {r[1] for r in conn.execute("PRAGMA table_info(analyses)").fetchall()}
+    if "product_insights_json" not in acols:
+        conn.execute("ALTER TABLE analyses ADD COLUMN product_insights_json TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_source_mode ON videos(source_mode)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category_key)")
     conn.commit()

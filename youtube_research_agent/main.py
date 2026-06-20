@@ -15,8 +15,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from src import (analyzer, channel_sync, db, product_intelligence_scorer,
-                 product_report_builder, query_builder, report_builder, scorer,
+from src import (analyzer, channel_sync, db, product_insight_analyzer,
+                 product_intelligence_scorer, product_report_builder,
+                 product_transcript_captions, product_transcript_import,
+                 query_builder, report_builder, scorer,
                  transcript_captions, transcript_import, video_search)
 from src.utils import ensure_data_dirs, load_config
 
@@ -59,6 +61,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="Statu/source_mode'e gore videolari listele")
     p_list.add_argument("--status", default=None)
     p_list.add_argument("--source-mode", default=None, help="CHANNEL | PRODUCT_SEARCH")
+    p_list.add_argument("--min-score", type=float, default=None,
+                        help="relevance_score >= bu deger (parti filtresi)")
 
     # --- Sprint 2: urun/kategori komutlari ---
     p_bq = sub.add_parser("build-queries", help="Kategori/urun arama sorgularini uret (API yok)")
@@ -75,6 +79,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_rp = sub.add_parser("report-products", help="Kategori/urun raporu")
     p_rp.add_argument("--category", required=True)
+
+    # --- Sprint 3: urun transcript + icgoru ---
+    p_ipt = sub.add_parser("import-product-transcript", help="Urun videosuna manuel transcript")
+    p_ipt.add_argument("--video-id", required=True)
+    p_ipt.add_argument("--file", required=True)
+    p_ipt.add_argument("--lang", default="tr")
+
+    p_pc = sub.add_parser("product-captions", help="(gri/opsiyonel) urun videolarinda altyazi dene")
+    p_pc.add_argument("--min-score", type=float, default=8.0)
+    p_pc.add_argument("--limit", type=int, default=5)
+
+    p_ap = sub.add_parser("analyze-products", help="Transcript'li urun videolarini analiz et/prompt uret")
+    p_ap.add_argument("--min-score", type=float, default=8.0)
+    p_ap.add_argument("--limit", type=int, default=10)
 
     return p
 
@@ -133,8 +151,11 @@ def main() -> None:
             if getattr(args, "source_mode", None):
                 where.append("source_mode = ?")
                 params.append(args.source_mode)
+            if getattr(args, "min_score", None) is not None:
+                where.append("relevance_score >= ?")
+                params.append(args.min_score)
             if not where:
-                raise SystemExit("list: en az --status veya --source-mode verin.")
+                raise SystemExit("list: en az --status, --source-mode veya --min-score verin.")
             rows = conn.execute(
                 "SELECT video_id, score, relevance_score, status, source_mode, title "
                 "FROM videos WHERE " + " AND ".join(where) +
@@ -164,6 +185,18 @@ def main() -> None:
 
         elif args.cmd == "report-products":
             product_report_builder.build_product_report(conn, config, args.category)
+
+        elif args.cmd == "import-product-transcript":
+            product_transcript_import.import_product_transcript(
+                conn, args.video_id, args.file, args.lang)
+
+        elif args.cmd == "product-captions":
+            product_transcript_captions.fetch_product_captions(
+                conn, config, args.min_score, args.limit)
+
+        elif args.cmd == "analyze-products":
+            product_insight_analyzer.analyze_products(
+                conn, config, args.min_score, args.limit)
     finally:
         conn.close()
 

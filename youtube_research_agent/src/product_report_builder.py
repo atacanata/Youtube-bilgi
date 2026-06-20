@@ -1,8 +1,70 @@
-"""Kategori/urun bazli Markdown rapor. Urun icgoruleri Sprint 3 placeholder."""
+"""Kategori/urun bazli Markdown rapor + urun icgoru toplulastirma (Sprint 3).
+
+Icgoru SADECE analiz edilmis (analyses.product_insights_json dolu) videolardan gelir;
+her madde 'kac videoda gecti' sayisiyla verilir (tek videodan genelleme yok).
+"""
 from __future__ import annotations
+
+import json
+from collections import Counter
 
 from src import query_builder
 from src.utils import resolve_path
+
+
+def _aggregate_insights(conn, prows) -> list:
+    """Urunun analiz edilmis videolarindaki product_insights_json'lari dondurur."""
+    out = []
+    for r in prows:
+        a = conn.execute("SELECT product_insights_json FROM analyses WHERE video_id = ?",
+                         (r["video_id"],)).fetchone()
+        if a and a[0]:
+            try:
+                out.append(json.loads(a[0]))
+            except Exception:
+                pass
+    return out
+
+
+def _freq(lists) -> list:
+    """Listelerdeki maddeleri frekansa gore (en cok 8) dondurur."""
+    c = Counter()
+    for lst in lists:
+        if isinstance(lst, list):
+            for it in lst:
+                key = str(it).strip()
+                if key:
+                    c[key[:90]] += 1
+    return c.most_common(8)
+
+
+def _insight_lines(conn, prows) -> list:
+    """Urun icgoru bolumu (gercek toplulastirma; veri yoksa durumu yazar)."""
+    analyzed = _aggregate_insights(conn, prows)
+    lines = ["### Urun icgoruleri"]
+    if not analyzed:
+        transcribed = sum(
+            1 for r in prows
+            if conn.execute("SELECT 1 FROM transcripts WHERE video_id = ?",
+                            (r["video_id"],)).fetchone()
+        )
+        lines.append(f"_Yeterli analiz yok — {len(prows)} video, {transcribed} transcript'li, "
+                     f"0 analiz edilmis. Icgoru icin: transcript (import/caption) + analyze-products._")
+        return lines
+    lines.append(f"_{len(analyzed)} analiz edilmis videodan toplulastirildi "
+                 f"(parantez = kac videoda gecti)._")
+    for baslik, key in [("Artilar", "artilar"), ("Eksiler", "eksiler"),
+                        ("Sik gecen sorunlar", "sorunlar"),
+                        ("Dikkat edilen kriterler", "kriterler")]:
+        freq = _freq([ins.get(key) for ins in analyzed])
+        if freq:
+            lines.append(f"**{baslik}:**")
+            lines += [f"- {item} ({n} videoda)" for item, n in freq]
+    rakip = [x for ins in analyzed for x in (ins.get("rakip_karsilastirma") or [])]
+    if rakip:
+        lines.append("**Rakip karsilastirma:**")
+        lines += [f"- {x}" for x in rakip[:6]]
+    return lines
 
 
 def build_product_report(conn, config: dict, category_key: str):
@@ -56,8 +118,7 @@ def build_product_report(conn, config: dict, category_key: str):
             lines.append(f"- relevance_reason: {r['relevance_reason'] or '-'}")
             lines.append(f"- transcript: {t_durum}")
             lines.append("")
-        lines.append("### Urun icgoruleri")
-        lines.append("(Icgoruler transcript + analiz sonrasi doldurulacak — Sprint 3)")
+        lines += _insight_lines(conn, prows)
         lines.append("")
 
     out = resolve_path("data/reports") / f"{category_key}_report.md"
