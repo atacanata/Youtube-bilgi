@@ -11,6 +11,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from src import claim_evidence_schema  # YTI-F0B: claim/evidence omurgasi (eklemeli sema)
 from src.utils import resolve_path
 
 SCHEMA = """
@@ -218,6 +219,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn = get_conn(db_path)
     conn.executescript(SCHEMA)
     migrate(conn)
+    claim_evidence_schema.ensure_claim_evidence_schema(conn)  # YTI-F0B: 6 yeni tablo (eklemeli, idempotent)
     conn.commit()
     return conn
 
