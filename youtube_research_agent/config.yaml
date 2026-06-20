@@ -59,6 +59,18 @@ product_research:
         - "karşılaştırma"
         - "uzun kullanım"
         - "sorunları"
+    - key: "dikey_supurge"
+      name: "Dikey Süpürge"
+      enabled: true                  # ON CALISMA (atolye); robot kilidi CANLI tarafta gecerli
+      products:
+        - "Dyson V16"
+        - "Dyson V15 Detect"
+        - "Dreame Z30"
+      search_intents:                # robot ile ayni dar set (kota disiplini)
+        - "inceleme"
+        - "karşılaştırma"
+        - "uzun kullanım"
+        - "sorunları"
 
 # === Sprint 4: Yerel STT (DIZUSTU AYARI; RTX PRO 6000 gelince buyutulur) ===
 stt:
