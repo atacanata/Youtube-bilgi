@@ -34,7 +34,7 @@ def _freq(lists) -> list:
             for it in lst:
                 key = str(it).strip()
                 if key:
-                    c[key[:90]] += 1
+                    c[key[:200]] += 1
     return c.most_common(8)
 
 
