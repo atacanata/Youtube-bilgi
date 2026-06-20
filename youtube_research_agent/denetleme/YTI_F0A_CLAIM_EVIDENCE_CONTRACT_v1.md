@@ -9,8 +9,8 @@
 > **Revizyon v1.1 (F0B-0 P2 doküman düzeltmesi):** Yeni tabloların TEXT birincil anahtarları
 > açıkça `NOT NULL` yapıldı; `evidence_segments.run_id` ve `insight_claims.run_id` artık
 > `NOT NULL REFERENCES product_runs(run_id) ON DELETE CASCADE` (claim/evidence kayıtları bir
-> product-run snapshot'ına bağlı olmalı). `audit_events.event_id` INTEGER AUTOINCREMENT → TEXT
-> NOT NULL PRIMARY KEY (spine PK tutarlılığı). **Yalnız doküman; kod/DB/migration değişikliği yok.**
+> product-run snapshot'ına bağlı olmalı). `audit_events.event_id` INTEGER PRIMARY KEY
+> AUTOINCREMENT olarak korundu (job_log ile tutarlı). **Yalnız doküman; kod/DB/migration değişikliği yok.**
 
 ---
 
@@ -207,7 +207,7 @@ CREATE TABLE agent_runs (
 
 -- (TASARIM) Append-only denetim izi (job_log'un claim/evidence/export katmanı karşılığı).
 CREATE TABLE audit_events (
-    event_id          TEXT NOT NULL PRIMARY KEY,   -- F0B-0 P2: INTEGER AUTOINCREMENT yerine TEXT uuid (spine PK tutarliligi; siralama ts ile)
+    event_id          INTEGER PRIMARY KEY AUTOINCREMENT,
     ts                TEXT DEFAULT (datetime('now')),
     actor             TEXT NOT NULL,               -- agent_run_id | 'cli' | 'human'
     event_type        TEXT NOT NULL
