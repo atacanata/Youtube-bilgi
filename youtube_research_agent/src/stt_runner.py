@@ -1,7 +1,9 @@
-"""TEK video STT orkestrasyon (PILOT).
+"""PRODUCT_SEARCH STT orkestrasyon.
 
-NEEDS_TRANSCRIPT + PRODUCT_SEARCH + skor>=esik icinden EN YUKSEK relevance_score'lu
-1 videoyu isler. Audio context manager ile garanti silinir. Sure raporlanir (isinma icin).
+En yuksek skorlu N (varsayilan 1) NEEDS_TRANSCRIPT + PRODUCT_SEARCH videoyu yt-dlp ile
+indirip faster-whisper ile transcribe eder. --product verilirse o urunle sinirlar.
+Audio context manager ile (hata olsa bile) silinir. Sure raporlanir (GPU isinma icin).
+Paralel YOK; tek tek islenir.
 """
 from __future__ import annotations
 
@@ -36,16 +38,47 @@ def _hata(conn, vid: str, msg: str) -> None:
     db.log_job(conn, vid, "stt-transcribe", "error", msg[:200])
 
 
+def _process_one(conn, stt: dict, row) -> tuple[bool, float, int]:
+    """Tek videoyu indir + STT + kaydet. (basarili, sure_sn, karakter) dondurur."""
+    vid, title = row["video_id"], row["title"]
+    print(f"\n  > [{row['relevance_score']}] {title[:58]} ({vid})")
+
+    db.set_status(conn, vid, "AUDIO_DOWNLOADING")
+    try:
+        wav = download_audio(vid, row["url"], stt.get("audio_tmp_dir", "tmp/audio"))
+    except Exception as e:
+        _hata(conn, vid, f"indirme: {e}")
+        print(f"    ! indirme hatasi: {e}")
+        return (False, 0.0, 0)
+    boyut_mb = wav.stat().st_size / 1e6
+
+    with _gecici_audio(wav, stt.get("delete_audio_after", True)):
+        db.set_status(conn, vid, "TRANSCRIBING")
+        try:
+            text, lang, sure = transcribe(wav, row["language_hint"], stt)
+        except Exception as e:
+            _hata(conn, vid, f"stt: {e}")
+            print(f"    ! STT hatasi: {e}")
+            return (False, 0.0, 0)
+        if not text:
+            _hata(conn, vid, "bos transcript")
+            print("    ! bos transcript")
+            return (False, 0.0, 0)
+        save_transcript(conn, vid, "AUDIO_STT", lang, text)
+        db.log_job(conn, vid, "stt-transcribe", "ok", f"{lang} {len(text)} krk {sure:.1f}s")
+
+    print(f"    OK {boyut_mb:.1f}MB | dil={lang} | {sure:.1f}s | {len(text):,} krk "
+          f"| audio silindi:{not wav.exists()}")
+    return (True, sure, len(text))
+
+
 def stt_transcribe(conn, config: dict, min_score: float, limit: int = 1,
                    product: str | None = None) -> int:
-    """En yuksek skorlu 1 urun videosunu indir + STT et.
-    product verilirse sadece o product_name icinden secer (ayni urun toplulastirma)."""
+    """En yuksek skorlu (en fazla limit) urun videosunu indir + STT et."""
     stt = config.get("stt", {})
     if not stt.get("enabled", False):
         print("  ! stt.enabled=false. config.yaml -> stt.enabled: true yapin.")
         return 0
-    if limit > 1:
-        print(f"  UYARI: Pilot asamasi — 1 video onerilir (verilen --limit={limit}); yine de 1 islenecek.")
 
     q = ("SELECT video_id, title, url, relevance_score, language_hint FROM videos "
          "WHERE source_mode = 'PRODUCT_SEARCH' AND status = 'NEEDS_TRANSCRIPT' "
@@ -54,51 +87,26 @@ def stt_transcribe(conn, config: dict, min_score: float, limit: int = 1,
     if product:
         q += " AND product_name = ?"
         params.append(product)
-    q += " ORDER BY relevance_score DESC, view_count DESC LIMIT 1"
-    row = conn.execute(q, params).fetchone()
-    if not row:
+    q += " ORDER BY relevance_score DESC, view_count DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(q, params).fetchall()
+    if not rows:
         print("  Uygun video yok (NEEDS_TRANSCRIPT + PRODUCT_SEARCH + skor>=esik).")
         return 0
 
-    vid, title = row["video_id"], row["title"]
-    print(f"  Secilen: [{row['relevance_score']}] {title[:60]} ({vid})")
+    print(f"  {len(rows)} video islenecek (her biri ~20 sn GPU yuku; tek tek).")
+    ok = 0
+    toplam_sure = 0.0
+    toplam_krk = 0
+    for row in rows:
+        basarili, sure, krk = _process_one(conn, stt, row)
+        if basarili:
+            ok += 1
+            toplam_sure += sure
+            toplam_krk += krk
 
-    # 1) AUDIO INDIR
-    db.set_status(conn, vid, "AUDIO_DOWNLOADING")
-    try:
-        wav = download_audio(vid, row["url"], stt.get("audio_tmp_dir", "tmp/audio"))
-    except Exception as e:
-        _hata(conn, vid, f"indirme: {e}")
-        raise SystemExit(f"Indirme basarisiz: {e}")
-    boyut_mb = wav.stat().st_size / 1e6
-    print(f"  Audio indirildi: {boyut_mb:.1f} MB")
-
-    text = lang = None
-    sure = 0.0
-    with _gecici_audio(wav, stt.get("delete_audio_after", True)):
-        # 2) STT
-        db.set_status(conn, vid, "TRANSCRIBING")
-        try:
-            text, lang, sure = transcribe(wav, row["language_hint"], stt)
-        except Exception as e:
-            _hata(conn, vid, f"stt: {e}")
-            raise SystemExit(str(e))
-        if not text:
-            _hata(conn, vid, "bos transcript")
-            raise SystemExit("STT bos metin dondurdu.")
-        # 3) KAYDET (status -> TRANSCRIBED)
-        save_transcript(conn, vid, "AUDIO_STT", lang, text)
-        db.log_job(conn, vid, "stt-transcribe", "ok", f"{lang} {len(text)} krk {sure:.1f}s")
-
-    silindi = not wav.exists()
-    print("\n  === STT PILOT SONUC ===")
-    print(f"  video_id       : {vid}")
-    print(f"  baslik         : {title[:70]}")
-    print(f"  dil (algilanan): {lang}")
-    print(f"  STT suresi     : {sure:.1f} sn  (bu surede GPU yuk altindaydi -> isinma)")
-    print(f"  audio boyut    : {boyut_mb:.1f} MB")
-    print(f"  metin uzunlugu : {len(text):,} karakter")
-    print(f"  audio silindi  : {silindi}")
-    print(f"  status         : NEEDS_TRANSCRIPT -> TRANSCRIBED (source_type=AUDIO_STT)")
-    print(f"  ilk 200 krk    : {text[:200]}")
-    return 1
+    print("\n  === STT OZET ===")
+    print(f"  basarili: {ok}/{len(rows)} | toplam STT suresi: {toplam_sure:.1f} sn "
+          f"| toplam metin: {toplam_krk:,} karakter")
+    print("  (GPU bu sure boyunca yuk altindaydi -> isinma)")
+    return ok

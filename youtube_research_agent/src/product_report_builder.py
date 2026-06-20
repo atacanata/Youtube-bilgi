@@ -35,7 +35,7 @@ def _freq(lists) -> list:
                 key = str(it).strip()
                 if key:
                     c[key[:200]] += 1
-    return c.most_common(8)
+    return c.most_common(15)
 
 
 def _insight_lines(conn, prows) -> list:
