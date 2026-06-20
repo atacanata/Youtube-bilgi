@@ -4,7 +4,13 @@
 > **Tür:** SALT SÖZLEŞME / TASARIM. Bu doküman hiçbir kodu, tabloyu, migration'ı veya
 > davranışı **değiştirmez**. Yalnızca mevcut durumu haritalar ve gelecek veri omurgasını
 > sözleşme olarak tanımlar.
-> **Tarih:** 2026-06-20 · **Sürüm:** v1 · **Durum:** Onay bekliyor (sonraki paket: F0B)
+> **Tarih:** 2026-06-20 · **Sürüm:** v1.1 · **Durum:** Onay bekliyor (sonraki paket: F0B)
+>
+> **Revizyon v1.1 (F0B-0 P2 doküman düzeltmesi):** Yeni tabloların TEXT birincil anahtarları
+> açıkça `NOT NULL` yapıldı; `evidence_segments.run_id` ve `insight_claims.run_id` artık
+> `NOT NULL REFERENCES product_runs(run_id) ON DELETE CASCADE` (claim/evidence kayıtları bir
+> product-run snapshot'ına bağlı olmalı). `audit_events.event_id` INTEGER AUTOINCREMENT → TEXT
+> NOT NULL PRIMARY KEY (spine PK tutarlılığı). **Yalnız doküman; kod/DB/migration değişikliği yok.**
 
 ---
 
@@ -112,7 +118,7 @@ denetlenebilir (`agent_runs` + `audit_events`).
 -- (TASARIM) Bir ürün için tek bir analiz "koşusu" / sürümlü anlık görüntü.
 -- Claim ve evidence bu koşuya bağlanır → tekrarlanabilirlik + "as of" ihracı.
 CREATE TABLE product_runs (
-    run_id            TEXT PRIMARY KEY,            -- ULID/uuid (kod üretir; F0B)
+    run_id            TEXT NOT NULL PRIMARY KEY,   -- ULID/uuid (kod üretir; F0B)
     category_key      TEXT NOT NULL,               -- mevcut videos.category_key ile uyumlu
     product_name      TEXT NOT NULL,               -- mevcut videos.product_name ile uyumlu
     run_type          TEXT NOT NULL                -- pipeline aşaması
@@ -131,8 +137,8 @@ CREATE TABLE product_runs (
 
 -- (TASARIM) Atomik kanıt: bir transcript'in, bir kanonik niteliğe dair bir parçası.
 CREATE TABLE evidence_segments (
-    segment_id        TEXT PRIMARY KEY,            -- kod üretir (F0B)
-    run_id            TEXT REFERENCES product_runs(run_id) ON DELETE CASCADE,
+    segment_id        TEXT NOT NULL PRIMARY KEY,   -- kod üretir (F0B)
+    run_id            TEXT NOT NULL REFERENCES product_runs(run_id) ON DELETE CASCADE,
     video_id          TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
     transcript_id     TEXT,                         -- bkz. RİSK R2 (transcripts'te surrogate id yok)
     start_sec         REAL,                         -- bkz. RİSK R1 (mevcut STT zaman damgası atıyor)
@@ -151,8 +157,8 @@ CREATE TABLE evidence_segments (
 
 -- (TASARIM) Sentezlenmiş iddia: ürün × kanonik nitelik × tür başına bir satır.
 CREATE TABLE insight_claims (
-    claim_id          TEXT PRIMARY KEY,
-    run_id            TEXT REFERENCES product_runs(run_id) ON DELETE CASCADE,
+    claim_id          TEXT NOT NULL PRIMARY KEY,
+    run_id            TEXT NOT NULL REFERENCES product_runs(run_id) ON DELETE CASCADE,
     category_key      TEXT NOT NULL,
     product_name      TEXT NOT NULL,
     claim_type        TEXT NOT NULL                -- §4
@@ -186,7 +192,7 @@ CREATE TABLE claim_evidence_links (
 
 -- (TASARIM) Her Claude-routine/ajan yürütmesinin provenance kaydı (Agent 1/2/3/4 burada izlenir).
 CREATE TABLE agent_runs (
-    agent_run_id      TEXT PRIMARY KEY,
+    agent_run_id      TEXT NOT NULL PRIMARY KEY,
     agent_name        TEXT NOT NULL,               -- 'AGENT_1_EVIDENCE', 'AGENT_2_CLAIM', ...
     agent_role        TEXT,
     model             TEXT,                         -- 'claude-code-routine' / model kimliği
@@ -201,7 +207,7 @@ CREATE TABLE agent_runs (
 
 -- (TASARIM) Append-only denetim izi (job_log'un claim/evidence/export katmanı karşılığı).
 CREATE TABLE audit_events (
-    event_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id          TEXT NOT NULL PRIMARY KEY,   -- F0B-0 P2: INTEGER AUTOINCREMENT yerine TEXT uuid (spine PK tutarliligi; siralama ts ile)
     ts                TEXT DEFAULT (datetime('now')),
     actor             TEXT NOT NULL,               -- agent_run_id | 'cli' | 'human'
     event_type        TEXT NOT NULL
