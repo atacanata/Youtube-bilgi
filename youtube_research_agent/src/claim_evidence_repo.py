@@ -100,10 +100,15 @@ def insert_insight_claim(conn: sqlite3.Connection, run_id: str, category_key: st
 
 def link_claim_evidence(conn: sqlite3.Connection, claim_id: str, segment_id: str,
                         relation: str = "SUPPORTS") -> None:
-    """Bir iddiayı bir kanıt segmentine bağlar (çok-çok). Tekrar bağ sessizce yok sayılır."""
+    """Bir iddiayı bir kanıt segmentine bağlar (çok-çok).
+
+    Tekrar (claim_id, segment_id) bağı HEDEFLİ olarak yok sayılır (ON CONFLICT DO NOTHING).
+    Geçersiz `relation` gibi CHECK ihlalleri sessizce YUTULMAZ — LOUD hata (IntegrityError) verir.
+    (Geniş IGNORE bastırması yerine hedefli ON CONFLICT; CHECK/FK hataları yine yükselir.)
+    """
     conn.execute(
-        "INSERT OR IGNORE INTO claim_evidence_links (claim_id, segment_id, relation) "
-        "VALUES (?,?,?)",
+        "INSERT INTO claim_evidence_links (claim_id, segment_id, relation) "
+        "VALUES (?,?,?) ON CONFLICT(claim_id, segment_id) DO NOTHING",
         (claim_id, segment_id, relation),
     )
     conn.commit()

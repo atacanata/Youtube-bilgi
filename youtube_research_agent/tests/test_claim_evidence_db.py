@@ -67,6 +67,17 @@ def _insert_video(conn: sqlite3.Connection, video_id: str = "vid_test") -> str:
     return video_id
 
 
+def _setup_claim_and_segment(conn: sqlite3.Connection):
+    """link testleri için minimal run + video + segment + claim kurar; (claim_id, segment_id) döner."""
+    vid = _insert_video(conn, "vid_link")
+    run_id = repo.create_product_run(conn, "dikey_supurge", "Test Urun", "EVIDENCE_EXTRACTION")
+    seg_id = repo.insert_evidence_segment(
+        conn, run_id, vid, "alıntı", "INDEPENDENT_EDITORIAL", "fiyat_performans")
+    clm_id = repo.insert_insight_claim(
+        conn, run_id, "dikey_supurge", "Test Urun", "PRO", "fiyat_performans", "iddia")
+    return clm_id, seg_id
+
+
 # --- testler ---------------------------------------------------------------
 
 def test_init_creates_all_tables() -> None:
@@ -166,6 +177,43 @@ def test_repository_insert_select() -> None:
         _cleanup(path)
 
 
+def test_link_idempotent_no_error() -> None:
+    """Aynı (claim, segment) ikinci kez linklenince hata YOK, no-op (tek satır kalır)."""
+    path = _temp_db_path()
+    try:
+        db.init_db(path)
+        conn = db.get_conn(path)
+        clm_id, seg_id = _setup_claim_and_segment(conn)
+        repo.link_claim_evidence(conn, clm_id, seg_id, "SUPPORTS")
+        repo.link_claim_evidence(conn, clm_id, seg_id, "SUPPORTS")   # tekrar -> no-op
+        n = conn.execute("SELECT COUNT(*) FROM claim_evidence_links "
+                         "WHERE claim_id=? AND segment_id=?", (clm_id, seg_id)).fetchone()[0]
+        assert n == 1, f"idempotent değil: {n} satır"
+        conn.close()
+    finally:
+        _cleanup(path)
+
+
+def test_link_invalid_relation_raises() -> None:
+    """Geçersiz relation (BAD_RELATION) CHECK ihlali -> LOUD hata; sessizce yutulmamalı."""
+    path = _temp_db_path()
+    try:
+        db.init_db(path)
+        conn = db.get_conn(path)
+        clm_id, seg_id = _setup_claim_and_segment(conn)
+        raised = False
+        try:
+            repo.link_claim_evidence(conn, clm_id, seg_id, "BAD_RELATION")
+        except sqlite3.IntegrityError:
+            raised = True
+        assert raised, "geçersiz relation sessizce yutuldu (IntegrityError bekleniyordu)"
+        n = conn.execute("SELECT COUNT(*) FROM claim_evidence_links").fetchone()[0]
+        assert n == 0, "geçersiz relation tabloya yazıldı (yazılmamalıydı)"
+        conn.close()
+    finally:
+        _cleanup(path)
+
+
 def test_init_on_real_db_copy() -> None:
     """Canlı data/youtube.db'nin KOPYASI üzerinde: eski veri+tablolar korunur, 6 tablo eklenir,
     ikinci init idempotenttir. Canlı dosyaya DOKUNULMAZ. (DB yoksa atlanır.)"""
@@ -205,6 +253,8 @@ _ALL = [
     test_init_idempotent_preserves_data,
     test_existing_five_tables_intact,
     test_repository_insert_select,
+    test_link_idempotent_no_error,
+    test_link_invalid_relation_raises,
     test_init_on_real_db_copy,
 ]
 

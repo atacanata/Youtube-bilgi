@@ -54,6 +54,9 @@ olmaz**; yeni tablolar yalnız `init-db` çağrılınca oluşur (mevcut desenle 
 
 - ID'ler stdlib `uuid4` ile (`run_…/seg_…/clm_…/ar_…`). `audit_events.event_id` INTEGER autoincrement.
 - **Bilinçli olarak YOK:** confidence hesabı, claim extraction, evidence üretimi, agent, Hemensec export.
+- **Codex P2 düzeltmesi:** `link_claim_evidence`, `INSERT OR IGNORE` yerine hedefli
+  `ON CONFLICT(claim_id, segment_id) DO NOTHING` kullanır → tekrar bağ no-op; ama geçersiz
+  `relation` gibi CHECK/FK ihlalleri **LOUD hata** verir (sessizce yutulmaz).
 
 ## 5. Test / smoke sonuçları
 
@@ -65,10 +68,12 @@ PASS  test_init_creates_all_tables
 PASS  test_init_idempotent_preserves_data
 PASS  test_existing_five_tables_intact
 PASS  test_repository_insert_select
+PASS  test_link_idempotent_no_error
+PASS  test_link_invalid_relation_raises
   (gercek DB kopyasi: videos=581 korundu, 6 tablo eklendi, idempotent)
 PASS  test_init_on_real_db_copy
 
-=== SONUC: 5/5 gecti ===
+=== SONUC: 7/7 gecti ===
 ```
 
 Kapsanan başarı kriterleri:
@@ -77,6 +82,7 @@ Kapsanan başarı kriterleri:
 - ✅ Eski 5 tablonun CREATE sql'i ikinci init sonrası **bit-aynı** (ALTER/rebuild yok).
 - ✅ Temel insert/select round-trip (run→evidence→claim→link→agent→audit, list/get) çalışıyor.
 - ✅ Repository layer import ediliyor.
+- ✅ `link_claim_evidence`: tekrar bağ no-op (ON CONFLICT DO NOTHING); geçersiz `relation` LOUD hata (CHECK).
 
 ## 6. Regresyon + canlı DB dokunulmazlığı
 
