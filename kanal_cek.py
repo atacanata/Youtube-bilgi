@@ -17,6 +17,7 @@ Cikti (REPODA IZLENEN kanallar/<kanal>/ klasorune):
 NOT: Sayfa kazima ~30 videoya kadar verir; RSS yedegi en fazla ~15. Daha
 fazlasi veya konu aramasi icin projenin API anahtarli main.py akisi gerekir.
 """
+import os
 import re
 import sys
 import json
@@ -32,6 +33,9 @@ sys.path.insert(0, str(KOK / "src"))
 from transcript import transcript_cek      # projenin gercek modulu
 # NOT: transcript_cek zaten dahili .list() yapar; ayrica precheck cagirmak
 # istegi ikiye katlar ve rate-limit'i kotulestirir -> rutinde tek cagri.
+
+from dotenv import load_dotenv
+load_dotenv(KOK / "config" / ".env")       # YOUTUBE_API_KEY vs.
 
 H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
@@ -173,16 +177,45 @@ def main():
                    help="Videolar arasi saniye (0=otomatik). Buyuk/riskli islerde 10-15 onerilir.")
     p.add_argument("--grup-bekle", type=int, default=0,
                    help="Her 25 videoda bir ekstra mola (saniye). Buyuk islerde 60-120 onerilir.")
+    p.add_argument("--liste", action="store_true",
+                   help="SADECE video listesi/basliklar kaydet; transkript CEKME (sifir ban riski).")
+    p.add_argument("--api", action="store_true",
+                   help="Listeleme icin YouTube Data API kullan (config/.env YOUTUBE_API_KEY).")
     args = p.parse_args()
 
-    kanal_id = kanal_id_cek(args.kanal)
-    kanal, videolar = son_videolar(kanal_id, args.sayi)
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    if (args.api or api_key):                    # API anahtari varsa listeleme icin onu kullan
+        from channel import kanal_videolari, kanal_id_bul
+        print("Listeleme: YouTube Data API")
+        kanal_id = kanal_id_bul(args.kanal)
+        videolar = kanal_videolari(kanal_id, son_gun=None, max_video=args.sayi)
+        kanal = videolar[0]["kanal"] if videolar else args.kanal
+    else:
+        print("Listeleme: RSS / sayfa kazima (API anahtari yok)")
+        kanal_id = kanal_id_cek(args.kanal)
+        kanal, videolar = son_videolar(kanal_id, args.sayi)
     print(f"Kanal: {kanal}  ({kanal_id})")
-    print(f"Son {len(videolar)} video bulundu.\n")
+    print(f"{len(videolar)} video bulundu.\n")
 
     slug = slugla(kanal, re.sub(r"[^A-Za-z0-9]+", "_", args.kanal).strip("_") or kanal_id)
     hedef = KOK / "kanallar" / slug
     hedef.mkdir(parents=True, exist_ok=True)
+
+    if args.liste:                               # SADECE liste -> transkript ucuna DOKUNMAZ
+        (hedef / "videolar.json").write_text(
+            json.dumps({"kanal": kanal, "channel_id": kanal_id, "videolar": videolar},
+                       ensure_ascii=False, indent=2), encoding="utf-8")
+        satir = [f"# {kanal} — Son {len(videolar)} Video", "",
+                 f"- Kanal ID: `{kanal_id}`", f"- Kanal girdisi: {args.kanal}",
+                 f"- Video sayisi: {len(videolar)}",
+                 "- Kaynak: YouTube Data API (sadece listeleme; transkript CEKILMEDI)", "",
+                 "## Video Basliklari", ""]
+        for i, v in enumerate(videolar, 1):
+            satir.append(f"{i}. **{v['baslik']}** — {(v.get('tarih') or '')[:10]}")
+            satir.append(f"   {v['url']}")
+        (hedef / "basliklar.md").write_text("\n".join(satir), encoding="utf-8")
+        print(f"LISTE kaydedildi (transkript yok): kanallar/{slug}/  (basliklar.md + videolar.json)")
+        return
 
     # Onceki basarili transcriptleri onbellekten al: tekrar cekme, IYI VERIYI EZME.
     onbellek = {}
