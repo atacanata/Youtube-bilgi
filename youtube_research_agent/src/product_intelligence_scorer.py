@@ -96,7 +96,8 @@ def score_products(conn, config: dict, category_key: str) -> int:
     rows = conn.execute(
         "SELECT video_id, title, description, product_name, category_name, search_intent, "
         "duration_sec, view_count FROM videos "
-        "WHERE source_mode = 'PRODUCT_SEARCH' AND category_key = ? AND status = 'DISCOVERED'",
+        "WHERE source_mode = 'PRODUCT_SEARCH' AND category_key = ? "
+        "AND status IN ('DISCOVERED','NEEDS_TRANSCRIPT','SKIPPED')",  # esik degisince yeniden skorla
         (category_key,),
     ).fetchall()
 

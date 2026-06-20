@@ -43,7 +43,7 @@ channels:
 # === Sprint 2: Urun/kategori bazli video istihbarati ===
 product_research:
   default_intents_per_product: 4     # kota kisiti: urun basina en fazla 4 intent
-  min_relevance_score: 6             # esik (config'ten; hardcode degil)
+  min_relevance_score: 7             # esik (config'ten; hardcode degil)
   categories:
     - key: "robot_supurge"
       name: "Robot Süpürge"
