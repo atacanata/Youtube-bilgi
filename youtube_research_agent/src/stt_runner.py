@@ -8,7 +8,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from src import db
-from src.audio_downloader import download_audio, ffmpeg_var_mi
+from src.audio_downloader import download_audio
 from src.transcript_import import save_transcript
 from src.whisper_transcriber import transcribe
 
@@ -44,9 +44,6 @@ def stt_transcribe(conn, config: dict, min_score: float, limit: int = 1) -> int:
         return 0
     if limit > 1:
         print(f"  UYARI: Pilot asamasi — 1 video onerilir (verilen --limit={limit}); yine de 1 islenecek.")
-    if not ffmpeg_var_mi():
-        raise SystemExit("ffmpeg PATH'te bulunamadi. Kurun: winget install Gyan.FFmpeg "
-                         "(veya choco install ffmpeg), sonra terminali yeniden acin.")
 
     row = conn.execute(
         "SELECT video_id, title, url, relevance_score, language_hint FROM videos "
