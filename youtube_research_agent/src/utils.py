@@ -6,7 +6,7 @@ komut hangi dizinden calistirilirsa calistirilsin tutarli olur.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -41,6 +41,11 @@ def ensure_data_dirs() -> None:
 def now_iso() -> str:
     """UTC ISO-8601 zaman damgasi (saniye hassasiyetinde)."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def today_str() -> str:
+    """Bugunun tarihi (YYYY-MM-DD) — search_cache anahtari icin."""
+    return date.today().isoformat()
 
 
 def content_hash(text: str) -> str:

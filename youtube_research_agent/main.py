@@ -13,9 +13,11 @@ Komutlar:
 from __future__ import annotations
 
 import argparse
+import sys
 
-from src import (analyzer, channel_sync, db, report_builder, scorer,
-                 transcript_captions, transcript_import)
+from src import (analyzer, channel_sync, db, product_intelligence_scorer,
+                 product_report_builder, query_builder, report_builder, scorer,
+                 transcript_captions, transcript_import, video_search)
 from src.utils import ensure_data_dirs, load_config
 
 
@@ -54,13 +56,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_rep = sub.add_parser("report", help="Kanal raporu uret")
     p_rep.add_argument("--channel", required=True)
 
-    p_list = sub.add_parser("list", help="Statuye gore videolari listele")
-    p_list.add_argument("--status", required=True)
+    p_list = sub.add_parser("list", help="Statu/source_mode'e gore videolari listele")
+    p_list.add_argument("--status", default=None)
+    p_list.add_argument("--source-mode", default=None, help="CHANNEL | PRODUCT_SEARCH")
+
+    # --- Sprint 2: urun/kategori komutlari ---
+    p_bq = sub.add_parser("build-queries", help="Kategori/urun arama sorgularini uret (API yok)")
+    p_bq.add_argument("--category", required=True)
+    p_bq.add_argument("--dry-run", action="store_true")
+
+    p_sp = sub.add_parser("search-products", help="Data API search.list ile video adaylari")
+    p_sp.add_argument("--category", required=True)
+    p_sp.add_argument("--limit", type=int, default=5, help="MAX sorgu (guvenlik freni)")
+    p_sp.add_argument("--dry-run", action="store_true")
+
+    p_scp = sub.add_parser("score-products", help="Urun videolarini relevance_score ile skorla")
+    p_scp.add_argument("--category", required=True)
+
+    p_rp = sub.add_parser("report-products", help="Kategori/urun raporu")
+    p_rp.add_argument("--category", required=True)
 
     return p
 
 
 def main() -> None:
+    # Windows konsolu/pipe cp1254 olabilir -> Turkce/ozel karakterde cokmesin
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     config = load_config()
     db_path = config["settings"]["db_path"]
     default_limit = config["settings"].get("max_videos_per_channel", 30)
@@ -102,15 +126,44 @@ def main() -> None:
             report_builder.build_report(conn, config, args.channel)
 
         elif args.cmd == "list":
+            where, params = [], []
+            if args.status:
+                where.append("status = ?")
+                params.append(args.status)
+            if getattr(args, "source_mode", None):
+                where.append("source_mode = ?")
+                params.append(args.source_mode)
+            if not where:
+                raise SystemExit("list: en az --status veya --source-mode verin.")
             rows = conn.execute(
-                "SELECT video_id, score, status, title FROM videos "
-                "WHERE status = ? ORDER BY score DESC, published_at DESC",
-                (args.status,),
+                "SELECT video_id, score, relevance_score, status, source_mode, title "
+                "FROM videos WHERE " + " AND ".join(where) +
+                " ORDER BY COALESCE(relevance_score, score) DESC, published_at DESC",
+                params,
             ).fetchall()
-            print(f"status={args.status}: {len(rows)} video")
+            print(f"{len(rows)} video")
             for r in rows:
-                sc = f"{r['score']:.1f}" if r["score"] is not None else "-"
-                print(f"  [{sc}] {r['video_id']}  {(r['title'] or '')[:70]}")
+                val = r["relevance_score"] if r["relevance_score"] is not None else r["score"]
+                sc = f"{val:.1f}" if val is not None else "-"
+                print(f"  [{sc:>4}] {r['source_mode']:<14} {r['status']:<16} "
+                      f"{r['video_id']}  {(r['title'] or '')[:55]}")
+
+        elif args.cmd == "build-queries":
+            qs = query_builder.build_queries(config, args.category)
+            print(f"build-queries: {len(qs)} sorgu | tahmini quota (hepsi calisirsa): "
+                  f"{len(qs) * 100} unit"
+                  + ("  [DRY-RUN: API/DB yok]" if args.dry_run else ""))
+            for q in qs:
+                print(f"  - {q['search_query']}   [intent={q['search_intent']}]")
+
+        elif args.cmd == "search-products":
+            video_search.search_products(conn, config, args.category, args.limit, args.dry_run)
+
+        elif args.cmd == "score-products":
+            product_intelligence_scorer.score_products(conn, config, args.category)
+
+        elif args.cmd == "report-products":
+            product_report_builder.build_product_report(conn, config, args.category)
     finally:
         conn.close()
 

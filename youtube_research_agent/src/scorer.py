@@ -54,7 +54,7 @@ def score_videos(conn, config: dict, channel_key: str | None = None) -> int:
     threshold = config.get("settings", {}).get("min_score_for_transcript", 7)
 
     query = ("SELECT video_id, title, description, duration_sec "
-             "FROM videos WHERE status = 'DISCOVERED'")
+             "FROM videos WHERE status = 'DISCOVERED' AND source_mode = 'CHANNEL'")
     params: list = []
     if channel_key:
         query += " AND channel_key = ?"

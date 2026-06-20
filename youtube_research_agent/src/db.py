@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS videos (
     thumbnail_url TEXT,
     url TEXT,
     language_hint TEXT,
+    source_mode TEXT NOT NULL DEFAULT 'CHANNEL'
+        CHECK (source_mode IN ('CHANNEL','PRODUCT_SEARCH')),
+    category_key TEXT,
+    category_name TEXT,
+    product_name TEXT,
+    search_query TEXT,
+    search_intent TEXT,
+    relevance_score REAL,
+    relevance_reason TEXT,
     status TEXT NOT NULL DEFAULT 'DISCOVERED'
         CHECK (status IN (
             'DISCOVERED','SCORED','SKIPPED','NEEDS_TRANSCRIPT','TRANSCRIBING',
@@ -83,6 +92,14 @@ CREATE TABLE IF NOT EXISTS job_log (
 CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
 CREATE INDEX IF NOT EXISTS idx_videos_score ON videos(score);
+
+CREATE TABLE IF NOT EXISTS search_cache (
+    query TEXT NOT NULL,
+    fetched_date TEXT NOT NULL,
+    result_count INTEGER,
+    quota_cost INTEGER,
+    PRIMARY KEY (query, fetched_date)
+);
 """
 
 
@@ -96,12 +113,56 @@ def get_conn(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+# Sprint 2'de eklenen videos kolonlari (eski DB'ler icin migration)
+_NEW_VIDEO_COLUMNS = [
+    ("source_mode", "TEXT NOT NULL DEFAULT 'CHANNEL' "
+                    "CHECK (source_mode IN ('CHANNEL','PRODUCT_SEARCH'))"),
+    ("category_key", "TEXT"),
+    ("category_name", "TEXT"),
+    ("product_name", "TEXT"),
+    ("search_query", "TEXT"),
+    ("search_intent", "TEXT"),
+    ("relevance_score", "REAL"),
+    ("relevance_reason", "TEXT"),
+]
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    """Eski videos tablosuna eksik kolonlari ekler (veriyi BOZMADAN)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(videos)").fetchall()}
+    for name, ddl in _NEW_VIDEO_COLUMNS:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE videos ADD COLUMN {name} {ddl}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_source_mode ON videos(source_mode)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category_key)")
+    conn.commit()
+
+
 def init_db(db_path: str) -> sqlite3.Connection:
-    """Semayi (idempotent) olusturur."""
+    """Semayi olusturur (idempotent) ve migration calistirir."""
     conn = get_conn(db_path)
     conn.executescript(SCHEMA)
+    migrate(conn)
     conn.commit()
     return conn
+
+
+def search_is_cached(conn: sqlite3.Connection, query: str, date_str: str) -> bool:
+    """query bugun (date_str) zaten arandi mi?"""
+    return conn.execute(
+        "SELECT 1 FROM search_cache WHERE query = ? AND fetched_date = ?",
+        (query, date_str),
+    ).fetchone() is not None
+
+
+def write_search_cache(conn: sqlite3.Connection, query: str, date_str: str,
+                       count: int, cost: int) -> None:
+    """search_cache'e kayit (ayni gun ayni sorgu API'ye TEKRAR gitmesin)."""
+    conn.execute(
+        "INSERT OR REPLACE INTO search_cache (query, fetched_date, result_count, quota_cost) "
+        "VALUES (?,?,?,?)", (query, date_str, count, cost),
+    )
+    conn.commit()
 
 
 def set_status(conn: sqlite3.Connection, video_id: str, status: str, **extra) -> None:

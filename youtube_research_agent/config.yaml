@@ -39,3 +39,23 @@ channels:
     channel_id: "UCUyDOdBWhC1MCxEjC46d-zw"
     language_hint: "en"
     enabled: true
+
+# === Sprint 2: Urun/kategori bazli video istihbarati ===
+product_research:
+  default_intents_per_product: 4     # kota kisiti: urun basina en fazla 4 intent
+  min_relevance_score: 6             # esik (config'ten; hardcode degil)
+  categories:
+    - key: "robot_supurge"
+      name: "Robot Süpürge"
+      enabled: true                  # SADECE bu kategori acik
+      products:
+        - "Dreame X50 Ultra"
+        - "Roborock S8 MaxV Ultra"
+        - "Roborock Qrevo Curv"
+        - "Ecovacs X5 Pro Omni"
+        - "Dreame L40 Ultra"
+      search_intents:                # SADECE en yuksek degerli 4 intent
+        - "inceleme"
+        - "karşılaştırma"
+        - "uzun kullanım"
+        - "sorunları"
