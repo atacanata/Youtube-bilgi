@@ -1,0 +1,4 @@
+# Indirilen MP3'ler ve uretilen metinler repoya gitmez
+ciktilar/
+__pycache__/
+*.pyc
